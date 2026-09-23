@@ -1,0 +1,3 @@
+-keep class rikka.shizuku.** { *; }
+-keep class com.devy.fleasionshizuku.** { *; }
+-dontwarn rikka.shizuku.**

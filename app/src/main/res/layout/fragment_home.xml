@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+    <LinearLayout
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/statusText"
+            android:text="Shizuku: checking..."
+            android:textColor="@color/black_text"
+            android:textSize="15sp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnShizuku"
+            android:text="@string/grant_shizuku"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/tab_active"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnLaunch"
+            android:text="@string/launch"
+            android:textColor="@color/black_text"
+            android:textStyle="bold"
+            android:backgroundTint="@color/pink_accent"
+            android:layout_marginTop="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"/>
+
+        <Button
+            android:id="@+id/btnStop"
+            android:text="@string/stop"
+            android:textColor="@color/black_text"
+            android:backgroundTint="#FFB0B0"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <TextView
+            android:id="@+id/homeLog"
+            android:textColor="@color/black_soft"
+            android:textSize="12sp"
+            android:paddingTop="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+    </LinearLayout>
+</ScrollView>

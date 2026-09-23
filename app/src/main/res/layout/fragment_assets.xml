@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <LinearLayout
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:text="Custom Skies"
+            android:textColor="@color/black_text"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnPickSky"
+            android:text="@string/pick_sky"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/tab_active"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <TextView
+            android:id="@+id/skyPath"
+            android:text="No sky selected"
+            android:textColor="@color/black_soft"
+            android:paddingTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnInstallSky"
+            android:text="@string/install_sky"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/pink_accent"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <View
+            android:layout_marginTop="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#33000000"/>
+
+        <TextView
+            android:text="Textures / Sounds / Meshes"
+            android:textColor="@color/black_text"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:paddingTop="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnPickTexture"
+            android:text="Pick Texture"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/tab_active"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnPickSound"
+            android:text="Pick Sound"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/tab_active"
+            android:layout_marginTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <TextView
+            android:text="Enter Roblox asset ID to bind:"
+            android:textColor="@color/black_text"
+            android:paddingTop="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <EditText
+            android:id="@+id/assetIdInput"
+            android:hint="e.g. 123456789"
+            android:textColor="@color/black_text"
+            android:textColorHint="#66000000"
+            android:inputType="number"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnBindAsset"
+            android:text="Bind Asset"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/pink_accent"
+            android:layout_marginTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <TextView
+            android:id="@+id/assetLog"
+            android:textColor="@color/black_soft"
+            android:textSize="12sp"
+            android:paddingTop="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+    </LinearLayout>
+</ScrollView>
