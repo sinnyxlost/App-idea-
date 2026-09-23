@@ -13,7 +13,6 @@ object FleasionConfigParser {
         val root = try {
             gson.fromJson(raw, JsonObject::class.java)
         } catch (t: Throwable) {
-            // Try as array of configs
             try {
                 val arr = gson.fromJson(raw, JsonArray::class.java)
                 val cfg = FleasionConfig(name = sourceName)
@@ -26,12 +25,12 @@ object FleasionConfigParser {
 
         val config = FleasionConfig(name = sourceName)
 
-        // ---- Format A: Fleasion's real "replacement_rules" tree ----
+        // Format A: Fleasion's real "replacement_rules" tree
         root.getAsJsonArray("replacement_rules")?.forEach { el ->
             walk(el, config)
         }
 
-        // ---- Format B: legacy "replacements" ----
+        // Format B: legacy "replacements"
         root.getAsJsonArray("replacements")?.forEach { el ->
             val obj = el.asJsonObject
             config.rules.add(
@@ -45,7 +44,7 @@ object FleasionConfigParser {
             )
         }
 
-        // ---- Format C: categorized maps ----
+        // Format C: categorized maps
         listOf("skybox","sky","textures","texture","sounds","sound","meshes","mesh")
             .forEach { category ->
                 root.getAsJsonObject(category)?.entrySet()?.forEach { (key, value) ->
@@ -53,7 +52,7 @@ object FleasionConfigParser {
                 }
             }
 
-        // ---- Format D: flat { "id": "path" } ----
+        // Format D: flat { "id": "path" }
         root.entrySet().forEach { (k, v) ->
             if (k.all { it.isDigit() } && v.isJsonPrimitive) {
                 config.rules.add(FleasionRule(k, v.asString))
@@ -72,41 +71,36 @@ object FleasionConfigParser {
         val enabled = obj.get("enabled")?.asBoolean ?: true
         if (!enabled) return
 
-        val type = obj.get("type")?.asString ?: ""
-
-        // Recurse into groups
+        // Recurse into groups first
         obj.getAsJsonArray("children")?.forEach { child ->
             walk(child, cfg)
         }
 
         // Leaf node — read replace_ids
-        val idsArr = obj.getAsJsonArray("replace_ids")
-        if (idsArr == null || idsArr.size() == 0) return
+        val idsArr = obj.getAsJsonArray("replace_ids") ?: return
+        if (idsArr.size() == 0) return
 
         val mode = obj.get("mode")?.asString ?: "cdn"
         val remove = obj.get("remove")?.asBoolean ?: false
         val cdnUrl = obj.get("cdn_url")?.asString
         val withId = obj.get("with_id")?.asString
-        val ruleName = obj.get("name")?.asString ?: "rule"
 
         idsArr.forEach { idEl ->
             val id = idEl.asString
-            val rule = FleasionRule(matchId = id)
 
-            when {
-                remove -> {
-                    rule.removeAsset = true
-                }
-                mode == "cdn" && cdnUrl != null -> {
-                    rule.cdnUrl = cdnUrl
-                }
-                mode == "id" && withId != null -> {
-                    rule.withAssetId = withId
-                }
-                else -> return@forEach
+            val rule: FleasionRule? = when {
+                remove -> FleasionRule(matchId = id, removeAsset = true)
+
+                mode == "cdn" && cdnUrl != null ->
+                    FleasionRule(matchId = id, cdnUrl = cdnUrl)
+
+                mode == "id" && withId != null ->
+                    FleasionRule(matchId = id, withAssetId = withId)
+
+                else -> null
             }
 
-            cfg.rules.add(rule)
+            if (rule != null) cfg.rules.add(rule)
         }
     }
 }
