@@ -4,46 +4,22 @@ import android.content.Context
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.FileInputStream
-import java.security.KeyStore
-import javax.net.ssl.KeyManagerFactory
-import javax.net.ssl.SSLContext
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Plain HTTP proxy. No TLS, no MITM — avoids breaking Roblox's own
+ * certificate validation, so game joins always work.
+ */
 class AssetRewriter(
     private val ctx: Context,
     port: Int
 ) : NanoHTTPD("127.0.0.1", port) {
-
-    private val localPort: Int = port
 
     private val replacements     = ConcurrentHashMap<String, String>()
     private val replacementBytes = ConcurrentHashMap<String, ByteArray>()
     private val cdnRewrites      = ConcurrentHashMap<String, String>()
     private val idRewrites       = ConcurrentHashMap<String, String>()
     private val removals         = ConcurrentHashMap.newKeySet<String>()
-
-    override fun start() {
-        val ksFile = File(ctx.filesDir, "certs/devy_keystore.p12")
-        if (ksFile.exists()) {
-            try {
-                val ks = KeyStore.getInstance("PKCS12").apply {
-                    FileInputStream(ksFile).use { load(it, "devy".toCharArray()) }
-                }
-                val kmf = KeyManagerFactory.getInstance(
-                    KeyManagerFactory.getDefaultAlgorithm()
-                ).apply { init(ks, "devy".toCharArray()) }
-                val ssl = SSLContext.getInstance("TLS").apply {
-                    init(kmf.keyManagers, null, null)
-                }
-                // NanoHTTPD.makeSecure expects an SSLServerSocketFactory
-                makeSecure(ssl.serverSocketFactory, null)
-            } catch (_: Throwable) {
-                // Fall through to plain HTTP
-            }
-        }
-        super.start(SOCKET_READ_TIMEOUT, false)
-    }
 
     fun loadFromConfig(configs: List<FleasionConfig>) {
         replacements.clear(); replacementBytes.clear()
@@ -61,8 +37,7 @@ class AssetRewriter(
     }
 
     override fun serve(session: IHTTPSession): Response {
-        val uri  = session.uri ?: ""
-        val host = session.headers["host"]?.substringBefore(":") ?: ""
+        val uri = session.uri ?: ""
 
         val assetId = extractAssetId(uri)
         if (assetId != null) {
@@ -89,9 +64,8 @@ class AssetRewriter(
             }
         }
 
-        val upstream = if (host.isBlank()) "https://assetdelivery.roblox.com$uri"
-                       else "https://$host$uri"
-        return proxyPassThrough(upstream)
+        // Not a matched asset — proxy through to real assetdelivery
+        return proxyPassThrough("https://assetdelivery.roblox.com$uri")
     }
 
     private fun blankAsset(): Response {

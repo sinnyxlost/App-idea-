@@ -8,20 +8,14 @@ import androidx.core.app.NotificationCompat
 import java.io.File
 
 /**
- * WiFi-safe proxy.
+ * WiFi-safe HTTP proxy — no CA install, no MITM, no system changes.
  *
- * ⚠️  NEVER touches:
- *   - Wi-Fi settings
- *   - System HTTP proxy (settings put global http_proxy)
- *   - /etc/hosts
- *   - DNS configuration
- *   - VPN routes
- *   - Any other app's traffic
+ * Intercepts ONLY Roblox's HTTP (port 80) traffic to asset CDN IPs.
+ * HTTPS (443) is untouched so game joins, matchmaking, and everything
+ * else work exactly like stock Roblox.
  *
- * ✅  ONLY does:
- *   - iptables NAT rule filtered by Roblox UID + asset CDN IP + port 80
- *
- * Result: game joins work, assets swap via HTTPS MITM, Wi-Fi is stock.
+ * Trade-off: only HTTP assets get swapped. Sounds, textures, and CDN
+ * files fetched over HTTP still work — the majority in most configs.
  */
 class ProxyService : Service() {
 
@@ -33,13 +27,11 @@ class ProxyService : Service() {
         const val CHANNEL_ID = "devy_proxy"
         var isRunning = false
 
-        // Roblox asset CDN IP ranges ONLY.
-        // Game-join servers / matchmaking / live game — NOT in this list.
         private val ASSET_IP_RANGES = listOf(
-            "23.62.0.0/16",     // Roblox asset CDN (Akamai)
-            "23.34.0.0/16",     // Roblox asset CDN backup
-            "96.7.0.0/16",      // rbxcdn
-            "45.15.72.0/22",    // Roblox asset delivery blocks
+            "23.62.0.0/16",
+            "23.34.0.0/16",
+            "96.7.0.0/16",
+            "45.15.72.0/22",
             "45.15.76.0/22",
             "45.15.80.0/22",
             "45.15.84.0/22",
@@ -63,15 +55,8 @@ class ProxyService : Service() {
     private fun start() {
         startForegroundNotification()
 
-        // 1. CA + keystore for HTTPS MITM
-        val ks = CaGenerator.ensureEverything(shizuku, filesDir) { logLine(it) }
-        if (ks == null) logLine("⚠ Keystore generation failed.")
-        else logLine("→ Keystore ready: ${ks.absolutePath}")
+        // NO CA generation, NO system trust install — that broke joins.
 
-        // 2. Install our CA into system trust so Roblox trusts the MITM
-        installCaIntoSystemTrust()
-
-        // 3. Local HTTPS proxy
         val p = AssetRewriter(this, PROXY_PORT)
         p.loadFromConfig(ConfigRepository.loadAllConfigs(this))
         p.start()
@@ -79,10 +64,8 @@ class ProxyService : Service() {
         proxy = p
         isRunning = true
 
-        // 4. iptables redirect — ONLY port 80, Roblox UID + asset CDN IPs
         installRedirects()
 
-        // 5. Launch Roblox
         Thread {
             Thread.sleep(1500)
             RobloxLauncher.launchAny(this)
@@ -101,38 +84,6 @@ class ProxyService : Service() {
         stopSelf()
     }
 
-    /** Copy our CA into system + user trust stores via Shizuku. */
-    private fun installCaIntoSystemTrust() {
-        val caCert = File(filesDir, "certs/ca.pem")
-        if (!caCert.exists()) { logLine("⚠ No CA file"); return }
-
-        val hash = shizuku.shellCapture(
-            "openssl x509 -inform PEM -subject_hash_old -in ${caCert.absolutePath} | head -1"
-        ) ?: return
-        val certName = "${hash.trim()}.0"
-
-        shizuku.shell(
-            "cp ${caCert.absolutePath} /system/etc/security/cacerts/$certName 2>/dev/null && " +
-                    "chmod 644 /system/etc/security/cacerts/$certName 2>/dev/null && echo ok",
-            { logLine("CA /system: $it") }
-        )
-        shizuku.shell(
-            "mkdir -p /data/misc/user/0/cacerts-added && " +
-                    "cp ${caCert.absolutePath} /data/misc/user/0/cacerts-added/$certName 2>/dev/null && " +
-                    "chmod 644 /data/misc/user/0/cacerts-added/$certName 2>/dev/null && echo ok",
-            { logLine("CA user: $it") }
-        )
-    }
-
-    /**
-     * Redirect Roblox's TCP 80 to our proxy ONLY when the destination IP
-     * is in an asset CDN range.
-     *
-     * Port 443 (HTTPS) is NOT redirected so game joins, matchmaking,
-     * and the game-server handshake all connect directly.
-     *
-     * No system proxy. No hosts file. No DNS. No VPN.
-     */
     private fun installRedirects() {
         val pkgUids = RobloxPathResolver.findAll(this).mapNotNull { inst ->
             try { packageManager.getApplicationInfo(inst.packageName, 0).uid }
@@ -167,7 +118,7 @@ class ProxyService : Service() {
                 { }
             )
         }
-        logLine("← Redirects cleared. Wi-Fi never modified.")
+        logLine("← Redirects cleared. Wi-Fi untouched.")
     }
 
     private fun logLine(s: String) {
@@ -186,7 +137,7 @@ class ProxyService : Service() {
         }
         val notif = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Devy Fleasion Proxy")
-            .setContentText("Intercepting asset CDN via 127.0.0.1:$PROXY_PORT")
+            .setContentText("HTTP asset intercept via 127.0.0.1:$PROXY_PORT")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .build()
