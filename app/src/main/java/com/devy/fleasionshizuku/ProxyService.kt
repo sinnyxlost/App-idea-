@@ -8,10 +8,20 @@ import androidx.core.app.NotificationCompat
 import java.io.File
 
 /**
- * Redirects ONLY Roblox's asset delivery traffic to our local HTTPS proxy.
+ * WiFi-safe proxy.
  *
- * Wi-Fi safe: no system proxy, no VPN, no /etc/hosts, no DNS.
- * Only iptables rules filtered by Roblox UID + destination IPs.
+ * ⚠️  NEVER touches:
+ *   - Wi-Fi settings
+ *   - System HTTP proxy (settings put global http_proxy)
+ *   - /etc/hosts
+ *   - DNS configuration
+ *   - VPN routes
+ *   - Any other app's traffic
+ *
+ * ✅  ONLY does:
+ *   - iptables NAT rule, filtered by Roblox UID + asset CDN IP range
+ *
+ * Result: game joins work, assets swap via HTTPS MITM, Wi-Fi is stock.
  */
 class ProxyService : Service() {
 
@@ -23,15 +33,13 @@ class ProxyService : Service() {
         const val CHANNEL_ID = "devy_proxy"
         var isRunning = false
 
-        // Roblox asset delivery IP ranges — only these get redirected
-        // (Roblox CDN / rbxcdn / assetdelivery)
+        // Roblox asset CDN IP ranges ONLY.
+        // Game-join servers / matchmaking / live game — NOT in this list.
         private val ASSET_IP_RANGES = listOf(
-            "23.62.0.0/16",     // Roblox CDN Akamai
-            "23.34.0.0/16",     // Roblox CDN backup
-            "104.16.0.0/12",    // Cloudflare
-            "172.64.0.0/13",    // Cloudflare
+            "23.62.0.0/16",     // Roblox asset CDN (Akamai)
+            "23.34.0.0/16",     // Roblox asset CDN backup
             "96.7.0.0/16",      // rbxcdn
-            "45.15.72.0/22",
+            "45.15.72.0/22",    // Roblox asset delivery blocks
             "45.15.76.0/22",
             "45.15.80.0/22",
             "45.15.84.0/22",
@@ -55,15 +63,15 @@ class ProxyService : Service() {
     private fun start() {
         startForegroundNotification()
 
-        // 1. Ensure CA + server cert + keystore exist before starting proxy
-        val keystore = CaGenerator.ensureEverything(shizuku, filesDir) { logLine(it) }
-        if (keystore == null) logLine("⚠ Keystore generation failed — HTTPS will fall back to HTTP")
-        else logLine("→ Keystore ready at ${keystore.absolutePath}")
+        // 1. CA + keystore for HTTPS MITM
+        val ks = CaGenerator.ensureEverything(shizuku, filesDir) { logLine(it) }
+        if (ks == null) logLine("⚠ Keystore generation failed.")
+        else logLine("→ Keystore ready: ${ks.absolutePath}")
 
-        // 2. Install CA into system trust store so Roblox trusts us
+        // 2. Install our CA into system trust so Roblox trusts the MITM
         installCaIntoSystemTrust()
 
-        // 3. Start the local HTTPS proxy
+        // 3. Local HTTPS proxy
         val p = AssetRewriter(this, PROXY_PORT)
         p.loadFromConfig(ConfigRepository.loadAllConfigs(this))
         p.start()
@@ -71,7 +79,7 @@ class ProxyService : Service() {
         proxy = p
         isRunning = true
 
-        // 4. iptables — Roblox UID only
+        // 4. iptables redirect — ONLY asset CDN IP ranges, Roblox UID only
         installRedirects()
 
         // 5. Launch Roblox
@@ -93,7 +101,7 @@ class ProxyService : Service() {
         stopSelf()
     }
 
-    /** Copy our CA into the system trust store via Shizuku. */
+    /** Copy our CA into system + user trust stores via Shizuku. */
     private fun installCaIntoSystemTrust() {
         val caCert = File(filesDir, "certs/ca.pem")
         if (!caCert.exists()) { logLine("⚠ No CA file"); return }
@@ -103,27 +111,24 @@ class ProxyService : Service() {
         ) ?: return
         val certName = "${hash.trim()}.0"
 
-        // Path 1: /system/etc/security/cacerts (works with rw system)
         shizuku.shell(
             "cp ${caCert.absolutePath} /system/etc/security/cacerts/$certName 2>/dev/null && " +
-                    "chmod 644 /system/etc/security/cacerts/$certName 2>/dev/null && " +
-                    "echo 'installed to /system'",
-            { logLine("CA: $it") }
+                    "chmod 644 /system/etc/security/cacerts/$certName 2>/dev/null && echo ok",
+            { logLine("CA /system: $it") }
         )
-
-        // Path 2: user CA store
         shizuku.shell(
             "mkdir -p /data/misc/user/0/cacerts-added && " +
                     "cp ${caCert.absolutePath} /data/misc/user/0/cacerts-added/$certName 2>/dev/null && " +
-                    "chmod 644 /data/misc/user/0/cacerts-added/$certName 2>/dev/null && " +
-                    "echo 'installed to user store'",
-            { logLine("CA: $it") }
+                    "chmod 644 /data/misc/user/0/cacerts-added/$certName 2>/dev/null && echo ok",
+            { logLine("CA user: $it") }
         )
     }
 
     /**
-     * Redirect Roblox's TCP 80 + 443 → our proxy, but ONLY for the
-     * asset CDN IP ranges. Game servers stay direct.
+     * Redirect Roblox's TCP 80 + 443 to our proxy ONLY when the
+     * destination IP is in an asset CDN range.
+     *
+     * No system proxy. No hosts file. No DNS. No VPN.
      */
     private fun installRedirects() {
         val pkgUids = RobloxPathResolver.findAll(this).mapNotNull { inst ->
@@ -140,14 +145,12 @@ class ProxyService : Service() {
 
         pkgUids.forEach { uid ->
             ASSET_IP_RANGES.forEach { cidr ->
-                // HTTP for CDN
                 shizuku.shell(
                     "iptables -t nat -A OUTPUT -m owner --uid-owner $uid " +
                             "-d $cidr -p tcp --dport 80 " +
                             "-j REDIRECT --to-ports $PROXY_PORT",
                     { }
                 )
-                // HTTPS for CDN
                 shizuku.shell(
                     "iptables -t nat -A OUTPUT -m owner --uid-owner $uid " +
                             "-d $cidr -p tcp --dport 443 " +
@@ -155,7 +158,7 @@ class ProxyService : Service() {
                     { }
                 )
             }
-            logLine("→ UID $uid → 127.0.0.1:$PROXY_PORT (asset CDN only)")
+            logLine("→ UID $uid → 127.0.0.1:$PROXY_PORT (asset CDN IPs only)")
         }
     }
 
@@ -167,7 +170,7 @@ class ProxyService : Service() {
                 { }
             )
         }
-        logLine("← Redirects cleared. Wi-Fi untouched.")
+        logLine("← Redirects cleared. Wi-Fi never modified.")
     }
 
     private fun logLine(s: String) {
@@ -186,7 +189,7 @@ class ProxyService : Service() {
         }
         val notif = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Devy Fleasion Proxy")
-            .setContentText("Intercepting Roblox asset CDN via 127.0.0.1:$PROXY_PORT")
+            .setContentText("Intercepting asset CDN via 127.0.0.1:$PROXY_PORT")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .build()
