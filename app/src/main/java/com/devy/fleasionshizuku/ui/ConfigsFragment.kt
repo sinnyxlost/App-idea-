@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import com.devy.fleasionshizuku.ConfigBridge
 import com.devy.fleasionshizuku.ConfigRepository
 import com.devy.fleasionshizuku.FleasionConfig
 import com.devy.fleasionshizuku.FleasionConfigParser
@@ -48,7 +49,6 @@ class ConfigsFragment : Fragment() {
             setPadding(0, 12, 0, 12)
             setTextColor(0xFF000000.toInt())
         }
-        configList.addView(statusLine)
 
         view.findViewById<Button>(R.id.btnImportConfig).setOnClickListener {
             launchConfigPicker()
@@ -92,7 +92,6 @@ class ConfigsFragment : Fragment() {
 
         val name = queryName(uri) ?: "imported_${System.currentTimeMillis()}.json"
 
-        // Copy into app configs folder so it survives
         val destDir = File(requireContext().filesDir, "imported_configs").apply { mkdirs() }
         val dest = File(destDir, name)
 
@@ -105,7 +104,6 @@ class ConfigsFragment : Fragment() {
             return
         }
 
-        // Parse + validate
         val cfg: FleasionConfig = try {
             FleasionConfigParser.parse(dest.readText(), name)
         } catch (t: Throwable) {
@@ -133,16 +131,18 @@ class ConfigsFragment : Fragment() {
     }
 
     private fun reload() {
-        // Clear list but keep status line
         configList.removeAllViews()
         configList.addView(statusLine)
 
-        val configs = ConfigRepository.loadAllConfigs(requireContext())
-        val runtime = ConfigBridge.snapshot()
+        val diskConfigs: List<FleasionConfig> = ConfigRepository.loadAllConfigs(requireContext())
+        val runtimeConfigs: List<FleasionConfig> = ConfigBridge.snapshot()
 
-        statusLine.text = "Loaded: ${configs.size} on disk, ${runtime.size} in memory"
+        statusLine.text = "Loaded: ${diskConfigs.size} on disk, ${runtimeConfigs.size} in memory"
 
-        val all = configs + runtime
+        val all: MutableList<FleasionConfig> = mutableListOf()
+        all.addAll(diskConfigs)
+        all.addAll(runtimeConfigs)
+
         if (all.isEmpty()) {
             val tv = TextView(requireContext()).apply {
                 text = "No configs yet. Tap Import to add one."
@@ -153,7 +153,7 @@ class ConfigsFragment : Fragment() {
             return
         }
 
-        all.forEach { cfg ->
+        for (cfg in all) {
             val tv = TextView(requireContext()).apply {
                 text = "• ${cfg.name} — ${cfg.rules.size} rules"
                 setPadding(0, 8, 0, 8)
@@ -162,7 +162,6 @@ class ConfigsFragment : Fragment() {
             configList.addView(tv)
         }
 
-        // Push to the active proxy if running
         ConfigBridge.pushToProxyIfRunning(requireContext())
     }
 
