@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <LinearLayout
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:text="Deep Cleanup"
+            android:textColor="@color/black_text"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <TextView
+            android:text="Removes EVERY trace Devy Fleasion has ever written — iptables rules, CAs, hosts bind-mounts, injected skies, caches, FFlags. Goes past what a normal uninstall does."
+            android:textColor="@color/black_soft"
+            android:textSize="12sp"
+            android:paddingTop="8dp"
+            android:paddingBottom="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchDeepFflags"
+            android:text="Also remove Devy-managed FFlags (restores original)"
+            android:textColor="@color/black_text"
+            android:checked="true"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchDeepRobloxWipe"
+            android:text="FULL Roblox data wipe (you'll re-login)"
+            android:textColor="@color/black_text"
+            android:checked="false"
+            android:layout_marginTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnClearCacheOnly"
+            android:text="Clear Roblox Cache Only"
+            android:textColor="@color/black_text"
+            android:backgroundTint="@color/tab_active"
+            android:layout_marginTop="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btnDeepWipe"
+            android:text="⚠ DEEP CLEANUP (Root-level)"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:backgroundTint="#D32F2F"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"/>
+
+        <TextView
+            android:text="Log"
+            android:textColor="@color/black_text"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingTop="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
+        <TextView
+            android:id="@+id/deepLog"
+            android:textColor="@color/black_text"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:paddingTop="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+    </LinearLayout>
+</ScrollView>

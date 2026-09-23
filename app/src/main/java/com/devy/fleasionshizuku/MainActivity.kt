@@ -22,19 +22,20 @@ class MainActivity : AppCompatActivity() {
         tabs  = findViewById(R.id.tabs)
 
         pager.adapter = object : FragmentStateAdapter(this) {
-            override fun getItemCount() = 5
+            override fun getItemCount() = 6
             override fun createFragment(position: Int): Fragment = when (position) {
                 0 -> HomeFragment()
                 1 -> AssetsFragment()
-                2 -> ConfigsFragment()
-                3 -> SettingsFragment()
-                else -> LogFragment()
+                2 -> FFlagsFragment()
+                3 -> ConfigsFragment()
+                4 -> CleanupFragment()
+                else -> SettingsFragment()
             }
         }
         TabLayoutMediator(tabs, pager) { tab, pos ->
             tab.text = when (pos) {
-                0 -> "Home"; 1 -> "Assets"; 2 -> "Configs"
-                3 -> "Settings"; else -> "Log"
+                0 -> "Home"; 1 -> "Assets"; 2 -> "FFlags"
+                3 -> "Configs"; 4 -> "Cleanup"; else -> "Settings"
             }
         }.attach()
 
