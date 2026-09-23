@@ -23,7 +23,6 @@ class AssetRewriter(
     private val idRewrites       = ConcurrentHashMap<String, String>()
     private val removals         = ConcurrentHashMap.newKeySet<String>()
 
-    /** Start with HTTPS enabled using our generated keystore. */
     override fun start() {
         val ksFile = File(ctx.filesDir, "certs/devy_keystore.p12")
         if (ksFile.exists()) {
@@ -37,9 +36,10 @@ class AssetRewriter(
                 val ssl = SSLContext.getInstance("TLS").apply {
                     init(kmf.keyManagers, null, null)
                 }
-                makeSecure(ssl.socketFactory, null)
+                // NanoHTTPD.makeSecure expects an SSLServerSocketFactory
+                makeSecure(ssl.serverSocketFactory, null)
             } catch (_: Throwable) {
-                // Fall through to plain HTTP if TLS setup fails
+                // Fall through to plain HTTP
             }
         }
         super.start(SOCKET_READ_TIMEOUT, false)
@@ -64,7 +64,6 @@ class AssetRewriter(
         val uri  = session.uri ?: ""
         val host = session.headers["host"]?.substringBefore(":") ?: ""
 
-        // ---- Asset rewrite path ----
         val assetId = extractAssetId(uri)
         if (assetId != null) {
             if (removals.contains(assetId)) return blankAsset()
@@ -90,7 +89,6 @@ class AssetRewriter(
             }
         }
 
-        // ---- Default: fetch from the real upstream for this host ----
         val upstream = if (host.isBlank()) "https://assetdelivery.roblox.com$uri"
                        else "https://$host$uri"
         return proxyPassThrough(upstream)
