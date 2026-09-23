@@ -3,7 +3,6 @@ package com.devy.fleasionshizuku
 import android.content.Context
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
-import rikka.shizuku.ShizukuRemoteProcess
 
 class ShizukuManager(private val ctx: Context) {
 
@@ -32,18 +31,43 @@ class ShizukuManager(private val ctx: Context) {
         shell(cmd, log)
     }
 
+    /**
+     * Run a shell command via Shizuku using ProcessBuilder wrapped
+     * through the Shizuku binder's newProcess (accessed via reflection
+     * to avoid compile-time visibility issues).
+     */
     fun shell(command: String, log: (String) -> Unit) {
         try {
             if (!Shizuku.pingBinder()) { log("Shizuku binder dead."); return }
             if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
                 log("Shizuku permission not granted."); return
             }
-            val proc: ShizukuRemoteProcess = Shizuku.newProcess(
-                arrayOf("sh", "-c", command), null, null
+
+            // Use reflection to call newProcess — works across Shizuku versions
+            val shizukuClass = Shizuku::class.java
+            val newProcessMethod = shizukuClass.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java
             )
-            val out = proc.inputStream.bufferedReader().readText()
-            val err = proc.errorStream.bufferedReader().readText()
-            proc.waitFor()
+            newProcessMethod.isAccessible = true
+
+            val process = newProcessMethod.invoke(
+                null,
+                arrayOf("sh", "-c", command),
+                null,
+                null
+            ) as? rikka.shizuku.ShizukuRemoteProcess
+
+            if (process == null) {
+                log("Failed to spawn Shizuku process.")
+                return
+            }
+
+            val out = process.inputStream.bufferedReader().readText()
+            val err = process.errorStream.bufferedReader().readText()
+            process.waitFor()
             if (out.isNotBlank()) log("» $out")
             if (err.isNotBlank()) log("⚠ $err")
         } catch (t: Throwable) {

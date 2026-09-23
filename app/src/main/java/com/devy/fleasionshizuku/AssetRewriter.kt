@@ -11,6 +11,7 @@ class AssetRewriter(
     port: Int
 ) : NanoHTTPD("127.0.0.1", port) {
 
+    private val localPort: Int = port
     private val replacements = ConcurrentHashMap<String, String>()
     private val replacementBytes = ConcurrentHashMap<String, ByteArray>()
 
@@ -73,7 +74,7 @@ class AssetRewriter(
         var rewritten = text
         replacements.keys.forEach { id ->
             if (text.contains("assetid=$id") || text.contains("rbxassetid://$id")) {
-                rewritten = text.replace("rbxassetid://$id", "http://127.0.0.1:$myPort/$id")
+                rewritten = text.replace("rbxassetid://$id", "http://127.0.0.1:$localPort/$id")
             }
         }
         return rewritten.toByteArray(Charsets.ISO_8859_1)
