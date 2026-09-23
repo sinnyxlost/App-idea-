@@ -3,9 +3,11 @@ package com.devy.fleasionshizuku
 import android.content.Context
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.Socket
+import java.io.File
+import java.io.FileInputStream
+import java.security.KeyStore
+import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLContext
 import java.util.concurrent.ConcurrentHashMap
 
 class AssetRewriter(
@@ -20,6 +22,28 @@ class AssetRewriter(
     private val cdnRewrites      = ConcurrentHashMap<String, String>()
     private val idRewrites       = ConcurrentHashMap<String, String>()
     private val removals         = ConcurrentHashMap.newKeySet<String>()
+
+    /** Start with HTTPS enabled using our generated keystore. */
+    override fun start() {
+        val ksFile = File(ctx.filesDir, "certs/devy_keystore.p12")
+        if (ksFile.exists()) {
+            try {
+                val ks = KeyStore.getInstance("PKCS12").apply {
+                    FileInputStream(ksFile).use { load(it, "devy".toCharArray()) }
+                }
+                val kmf = KeyManagerFactory.getInstance(
+                    KeyManagerFactory.getDefaultAlgorithm()
+                ).apply { init(ks, "devy".toCharArray()) }
+                val ssl = SSLContext.getInstance("TLS").apply {
+                    init(kmf.keyManagers, null, null)
+                }
+                makeSecure(ssl.socketFactory, null)
+            } catch (_: Throwable) {
+                // Fall through to plain HTTP if TLS setup fails
+            }
+        }
+        super.start(SOCKET_READ_TIMEOUT, false)
+    }
 
     fun loadFromConfig(configs: List<FleasionConfig>) {
         replacements.clear(); replacementBytes.clear()
@@ -37,10 +61,10 @@ class AssetRewriter(
     }
 
     override fun serve(session: IHTTPSession): Response {
-        val uri = session.uri ?: return newFixedLengthResponse(
-            Response.Status.BAD_REQUEST, "text/plain", "no uri"
-        )
+        val uri  = session.uri ?: ""
+        val host = session.headers["host"]?.substringBefore(":") ?: ""
 
+        // ---- Asset rewrite path ----
         val assetId = extractAssetId(uri)
         if (assetId != null) {
             if (removals.contains(assetId)) return blankAsset()
@@ -48,9 +72,7 @@ class AssetRewriter(
             idRewrites[assetId]?.let { otherId ->
                 return proxyPassThrough("https://assetdelivery.roblox.com/v1/asset/?id=$otherId")
             }
-            cdnRewrites[assetId]?.let { url ->
-                return proxyPassThrough(url)
-            }
+            cdnRewrites[assetId]?.let { url -> return proxyPassThrough(url) }
             replacementBytes[assetId]?.let { bytes ->
                 return newFixedLengthResponse(
                     Response.Status.OK, guessMime(uri),
@@ -58,7 +80,7 @@ class AssetRewriter(
                 )
             }
             replacements[assetId]?.let { path ->
-                val file = java.io.File(path)
+                val file = File(path)
                 if (file.exists()) {
                     return newChunkedResponse(
                         Response.Status.OK, guessMime(uri),
@@ -67,7 +89,11 @@ class AssetRewriter(
                 }
             }
         }
-        return proxyPassThrough(uri)
+
+        // ---- Default: fetch from the real upstream for this host ----
+        val upstream = if (host.isBlank()) "https://assetdelivery.roblox.com$uri"
+                       else "https://$host$uri"
+        return proxyPassThrough(upstream)
     }
 
     private fun blankAsset(): Response {
@@ -90,9 +116,10 @@ class AssetRewriter(
 
     private fun proxyPassThrough(uri: String): Response {
         return try {
-            val real = if (uri.startsWith("http")) uri else "https://$uri"
-            val conn = java.net.URL(real).openConnection() as java.net.HttpURLConnection
+            val conn = java.net.URL(uri).openConnection() as java.net.HttpURLConnection
             conn.setRequestProperty("User-Agent", "Roblox/WinInet")
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 15_000
             conn.connect()
             newChunkedResponse(
                 Response.Status.OK,
@@ -111,6 +138,7 @@ class AssetRewriter(
             Regex("""rbxassetid://(\d+)"""),
             Regex("""[?&]assetid=(\d+)"""),
             Regex("""[?&]id=(\d+)"""),
+            Regex("""/asset/?\?id=(\d+)"""),
             Regex("""/asset/(\d+)"""),
             Regex("""/(\d+)(?:\?|$)""")
         )
@@ -127,6 +155,7 @@ class AssetRewriter(
         uri.endsWith(".mp3") -> "audio/mpeg"
         uri.endsWith(".wav") -> "audio/wav"
         uri.endsWith(".ttf") -> "font/ttf"
+        uri.endsWith(".obj") -> "application/octet-stream"
         else -> "application/octet-stream"
     }
 }
