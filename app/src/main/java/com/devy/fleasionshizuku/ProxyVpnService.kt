@@ -30,6 +30,7 @@ class ProxyVpnService : VpnService() {
             setupVpn()
             startLocalProxy()
             localProxy.loadFromConfig(ConfigRepository.loadAllConfigs(this))
+            ConfigBridge.attachRewriter(localProxy)
 
             if (autoLaunch) {
                 Thread {
@@ -97,6 +98,7 @@ class ProxyVpnService : VpnService() {
 
     override fun onDestroy() {
         try {
+            ConfigBridge.detachRewriter()
             proxyThread?.interrupt()
             localProxy.stop()
             vpnInterface?.close()

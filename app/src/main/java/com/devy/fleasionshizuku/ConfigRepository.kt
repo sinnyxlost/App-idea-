@@ -5,7 +5,7 @@ import java.io.File
 
 object ConfigRepository {
 
-    private val SEARCH_DIRS = listOf(
+    private val EXTERNAL_DIRS = listOf(
         "/sdcard/Fleasion/configs",
         "/sdcard/Android/data/com.fleasion/files/configs",
         "/sdcard/Download/Fleasion"
@@ -14,25 +14,34 @@ object ConfigRepository {
     fun loadAllConfigs(ctx: Context): List<FleasionConfig> {
         val configs = mutableListOf<FleasionConfig>()
 
-        SEARCH_DIRS.forEach { path ->
+        // App-internal imported configs
+        val internal = File(ctx.filesDir, "imported_configs")
+        if (internal.exists()) {
+            internal.listFiles { f -> f.extension in listOf("json", "json5", "txt") }
+                ?.forEach { f ->
+                    try { configs.add(FleasionConfigParser.parse(f.readText(), f.name)) }
+                    catch (_: Throwable) {}
+                }
+        }
+
+        // External Fleasion folders
+        EXTERNAL_DIRS.forEach { path ->
             val dir = File(path)
             if (dir.exists() && dir.isDirectory) {
                 dir.listFiles { f -> f.extension in listOf("json", "json5", "txt") }
                     ?.forEach { f ->
-                        try {
-                            configs.add(FleasionConfigParser.parse(f.readText(), f.name))
-                        } catch (_: Throwable) {}
+                        try { configs.add(FleasionConfigParser.parse(f.readText(), f.name)) }
+                        catch (_: Throwable) {}
                     }
             }
         }
 
+        // Bundled assets
         try {
             ctx.assets.list("configs")?.forEach { name ->
                 ctx.assets.open("configs/$name").use { stream ->
                     configs.add(
-                        FleasionConfigParser.parse(
-                            stream.bufferedReader().readText(), name
-                        )
+                        FleasionConfigParser.parse(stream.bufferedReader().readText(), name)
                     )
                 }
             }
