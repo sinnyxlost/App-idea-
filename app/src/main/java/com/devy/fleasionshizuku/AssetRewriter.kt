@@ -3,7 +3,9 @@ package com.devy.fleasionshizuku
 import android.content.Context
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
-import java.nio.ByteBuffer
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 
 class AssetRewriter(
@@ -13,25 +15,22 @@ class AssetRewriter(
 
     private val localPort: Int = port
 
-    private val replacements  = ConcurrentHashMap<String, String>()   // id → local file path
-    private val replacementBytes = ConcurrentHashMap<String, ByteArray>() // id → bytes
-    private val cdnRewrites   = ConcurrentHashMap<String, String>()   // id → cdn url
-    private val idRewrites    = ConcurrentHashMap<String, String>()   // id → other roblox asset id
-    private val removals      = ConcurrentHashMap.newKeySet<String>() // ids to blank
+    private val replacements     = ConcurrentHashMap<String, String>()
+    private val replacementBytes = ConcurrentHashMap<String, ByteArray>()
+    private val cdnRewrites      = ConcurrentHashMap<String, String>()
+    private val idRewrites       = ConcurrentHashMap<String, String>()
+    private val removals         = ConcurrentHashMap.newKeySet<String>()
 
     fun loadFromConfig(configs: List<FleasionConfig>) {
-        replacements.clear()
-        replacementBytes.clear()
-        cdnRewrites.clear()
-        idRewrites.clear()
-        removals.clear()
+        replacements.clear(); replacementBytes.clear()
+        cdnRewrites.clear(); idRewrites.clear(); removals.clear()
 
         configs.forEach { cfg ->
             cfg.rules.forEach { rule ->
-                rule.replacementPath?.let { replacements[rule.matchId] = it }
+                rule.replacementPath?.let  { replacements[rule.matchId] = it }
                 rule.replacementBytes?.let { replacementBytes[rule.matchId] = it }
-                rule.cdnUrl?.let { cdnRewrites[rule.matchId] = it }
-                rule.withAssetId?.let { idRewrites[rule.matchId] = it }
+                rule.cdnUrl?.let           { cdnRewrites[rule.matchId] = it }
+                rule.withAssetId?.let      { idRewrites[rule.matchId] = it }
                 if (rule.removeAsset) removals.add(rule.matchId)
             }
         }
@@ -44,31 +43,20 @@ class AssetRewriter(
 
         val assetId = extractAssetId(uri)
         if (assetId != null) {
+            if (removals.contains(assetId)) return blankAsset()
 
-            // Blank asset (remove)
-            if (removals.contains(assetId)) {
-                return blankAsset(uri)
-            }
-
-            // Replace with another Roblox asset id
             idRewrites[assetId]?.let { otherId ->
                 return proxyPassThrough("https://assetdelivery.roblox.com/v1/asset/?id=$otherId")
             }
-
-            // CDN url rewrite
             cdnRewrites[assetId]?.let { url ->
                 return proxyPassThrough(url)
             }
-
-            // Local bytes
             replacementBytes[assetId]?.let { bytes ->
                 return newFixedLengthResponse(
                     Response.Status.OK, guessMime(uri),
                     ByteArrayInputStream(bytes), bytes.size.toLong()
                 )
             }
-
-            // Local file
             replacements[assetId]?.let { path ->
                 val file = java.io.File(path)
                 if (file.exists()) {
@@ -82,18 +70,17 @@ class AssetRewriter(
         return proxyPassThrough(uri)
     }
 
-    private fun blankAsset(uri: String): Response {
-        // Tiny transparent 1x1 PNG for image requests, empty for everything else
+    private fun blankAsset(): Response {
         val png = byteArrayOf(
-            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15.toByte(), 0xC4.toByte(),
-            0x89.toByte(), 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41,
-            0x54, 0x78, 0x9C.toByte(), 0x62, 0x00, 0x01, 0x00, 0x00,
-            0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4.toByte(), 0x00,
-            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE.toByte(), 0x42,
-            0x60, 0x82.toByte()
+            0x89.toByte(),0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,
+            0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+            0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,
+            0x08,0x06,0x00,0x00,0x00,0x1F,0x15.toByte(),0xC4.toByte(),
+            0x89.toByte(),0x00,0x00,0x00,0x0D,0x49,0x44,0x41,
+            0x54,0x78,0x9C.toByte(),0x62,0x00,0x01,0x00,0x00,
+            0x05,0x00,0x01,0x0D,0x0A,0x2D,0xB4.toByte(),0x00,
+            0x00,0x00,0x00,0x49,0x45,0x4E,0x44,0xAE.toByte(),0x42,
+            0x60,0x82.toByte()
         )
         return newFixedLengthResponse(
             Response.Status.OK, "image/png",
@@ -119,31 +106,6 @@ class AssetRewriter(
         }
     }
 
-    fun processPacket(buffer: ByteBuffer, len: Int): ByteArray {
-        val data = ByteArray(len)
-        buffer.get(data, 0, len)
-        val text = String(data, Charsets.ISO_8859_1)
-        var rewritten = text
-
-        // Rewrite rbxassetid://<id> → local proxy
-        val allIds = HashSet<String>()
-        allIds.addAll(replacements.keys)
-        allIds.addAll(replacementBytes.keys)
-        allIds.addAll(cdnRewrites.keys)
-        allIds.addAll(idRewrites.keys)
-        allIds.addAll(removals)
-
-        allIds.forEach { id ->
-            if (text.contains("rbxassetid://$id")) {
-                rewritten = rewritten.replace(
-                    "rbxassetid://$id",
-                    "http://127.0.0.1:$localPort/asset/$id"
-                )
-            }
-        }
-        return rewritten.toByteArray(Charsets.ISO_8859_1)
-    }
-
     private fun extractAssetId(uri: String): String? {
         val patterns = listOf(
             Regex("""rbxassetid://(\d+)"""),
@@ -165,7 +127,6 @@ class AssetRewriter(
         uri.endsWith(".mp3") -> "audio/mpeg"
         uri.endsWith(".wav") -> "audio/wav"
         uri.endsWith(".ttf") -> "font/ttf"
-        uri.endsWith(".mesh") || uri.endsWith(".obj") -> "application/octet-stream"
         else -> "application/octet-stream"
     }
 }

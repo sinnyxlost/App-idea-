@@ -8,8 +8,8 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import com.devy.fleasionshizuku.ConfigRepository
 import com.devy.fleasionshizuku.ConfigBridge
+import com.devy.fleasionshizuku.ConfigRepository
 import com.devy.fleasionshizuku.ProxyService
 import com.devy.fleasionshizuku.R
 import com.devy.fleasionshizuku.ShizukuManager
@@ -38,7 +38,7 @@ class HomeFragment : Fragment() {
                     action = ProxyService.ACTION_STOP
                 }
             )
-            log("Proxy stopped.")
+            log("Proxy stopped. Wi-Fi untouched.")
         }
         updateStatus()
     }
@@ -58,7 +58,6 @@ class HomeFragment : Fragment() {
     }
 
     private fun startProxy() {
-        // Preload configs so proxy has rules on startup
         val configs = ConfigRepository.loadAllConfigs(requireContext())
         log("Loaded ${configs.size} config(s).")
         configs.forEach { cfg ->
@@ -71,7 +70,7 @@ class HomeFragment : Fragment() {
         }
         requireContext().startForegroundService(i)
         log("Proxy starting on 127.0.0.1:8081")
-        log("Setting system HTTP proxy via Shizuku...")
+        log("Wi-Fi stays normal — only Roblox traffic is redirected.")
         log("Roblox will launch automatically.")
     }
 
