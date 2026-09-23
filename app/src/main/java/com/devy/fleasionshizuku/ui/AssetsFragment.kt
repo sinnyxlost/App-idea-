@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import com.devy.fleasionshizuku.R
+import com.devy.fleasionshizuku.ConfigBridge
 import com.devy.fleasionshizuku.ShizukuManager
 import com.devy.fleasionshizuku.SkyInstaller
 import com.devy.fleasionshizuku.FleasionConfig
