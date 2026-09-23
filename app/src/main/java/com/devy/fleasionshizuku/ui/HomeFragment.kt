@@ -1,17 +1,16 @@
 package com.devy.fleasionshizuku.ui
 
-import android.app.Activity
 import android.content.Intent
-import android.net.VpnService
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
-import com.devy.fleasionshizuku.ProxyVpnService
+import com.devy.fleasionshizuku.ConfigRepository
+import com.devy.fleasionshizuku.ConfigBridge
+import com.devy.fleasionshizuku.ProxyService
 import com.devy.fleasionshizuku.R
 import com.devy.fleasionshizuku.ShizukuManager
 import rikka.shizuku.Shizuku
@@ -22,13 +21,6 @@ class HomeFragment : Fragment() {
     private lateinit var homeLog: TextView
     private val shizukuManager by lazy { ShizukuManager(requireContext()) }
     private val shizukuPermissionCode = 1001
-
-    private val vpnLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) startProxyService()
-        else log("VPN permission denied.")
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -41,7 +33,11 @@ class HomeFragment : Fragment() {
         view.findViewById<Button>(R.id.btnShizuku).setOnClickListener { requestShizuku() }
         view.findViewById<Button>(R.id.btnLaunch).setOnClickListener { startProxy() }
         view.findViewById<Button>(R.id.btnStop).setOnClickListener {
-            requireContext().stopService(Intent(requireContext(), ProxyVpnService::class.java))
+            requireContext().startService(
+                Intent(requireContext(), ProxyService::class.java).apply {
+                    action = ProxyService.ACTION_STOP
+                }
+            )
             log("Proxy stopped.")
         }
         updateStatus()
@@ -62,16 +58,21 @@ class HomeFragment : Fragment() {
     }
 
     private fun startProxy() {
-        val intent = VpnService.prepare(requireContext())
-        if (intent != null) vpnLauncher.launch(intent) else startProxyService()
-    }
+        // Preload configs so proxy has rules on startup
+        val configs = ConfigRepository.loadAllConfigs(requireContext())
+        log("Loaded ${configs.size} config(s).")
+        configs.forEach { cfg ->
+            ConfigBridge.registerRuntime(cfg)
+            log(" • ${cfg.name} — ${cfg.rules.size} rules")
+        }
 
-    private fun startProxyService() {
-        val i = Intent(requireContext(), ProxyVpnService::class.java).apply {
-            action = ProxyVpnService.ACTION_START
+        val i = Intent(requireContext(), ProxyService::class.java).apply {
+            action = ProxyService.ACTION_START
         }
         requireContext().startForegroundService(i)
-        log("Roblox proxy starting on 127.0.0.1:8081")
+        log("Proxy starting on 127.0.0.1:8081")
+        log("Setting system HTTP proxy via Shizuku...")
+        log("Roblox will launch automatically.")
     }
 
     private fun updateStatus() {
