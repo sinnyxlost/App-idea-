@@ -19,7 +19,7 @@ import java.io.File
  *   - Any other app's traffic
  *
  * ✅  ONLY does:
- *   - iptables NAT rule, filtered by Roblox UID + asset CDN IP range
+ *   - iptables NAT rule filtered by Roblox UID + asset CDN IP + port 80
  *
  * Result: game joins work, assets swap via HTTPS MITM, Wi-Fi is stock.
  */
@@ -79,7 +79,7 @@ class ProxyService : Service() {
         proxy = p
         isRunning = true
 
-        // 4. iptables redirect — ONLY asset CDN IP ranges, Roblox UID only
+        // 4. iptables redirect — ONLY port 80, Roblox UID + asset CDN IPs
         installRedirects()
 
         // 5. Launch Roblox
@@ -125,8 +125,11 @@ class ProxyService : Service() {
     }
 
     /**
-     * Redirect Roblox's TCP 80 + 443 to our proxy ONLY when the
-     * destination IP is in an asset CDN range.
+     * Redirect Roblox's TCP 80 to our proxy ONLY when the destination IP
+     * is in an asset CDN range.
+     *
+     * Port 443 (HTTPS) is NOT redirected so game joins, matchmaking,
+     * and the game-server handshake all connect directly.
      *
      * No system proxy. No hosts file. No DNS. No VPN.
      */
@@ -151,14 +154,8 @@ class ProxyService : Service() {
                             "-j REDIRECT --to-ports $PROXY_PORT",
                     { }
                 )
-                shizuku.shell(
-                    "iptables -t nat -A OUTPUT -m owner --uid-owner $uid " +
-                            "-d $cidr -p tcp --dport 443 " +
-                            "-j REDIRECT --to-ports $PROXY_PORT",
-                    { }
-                )
             }
-            logLine("→ UID $uid → 127.0.0.1:$PROXY_PORT (asset CDN IPs only)")
+            logLine("→ UID $uid → 127.0.0.1:$PROXY_PORT (HTTP/80 asset CDN only)")
         }
     }
 
